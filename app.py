@@ -3,7 +3,6 @@ import pandas as pd
 import re
 import os
 import tempfile
-from datetime import date
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
@@ -18,8 +17,6 @@ if 'ready'          not in st.session_state: st.session_state.ready          = F
 shopify_file  = st.file_uploader("Upload Shopify Excel",  type=["xlsx"])
 razorpay_file = st.file_uploader("Upload Razorpay Excel", type=["xlsx"])
 
-selected_date = st.date_input("Select Journal Entry Date", value=date.today())
-
 # ── Custom file names ──────────────────────────────────────────────
 st.subheader("Output File Names")
 lookup_filename  = st.text_input("Lookup File Name",  value="lookup",        placeholder="e.g. lookup_april")
@@ -33,7 +30,7 @@ if not shopify_file or not razorpay_file:
     st.session_state.ready = False
 
 if run_clicked and shopify_file and razorpay_file:
-    st.session_state.ready = False  # reset while processing
+    st.session_state.ready = False
 
     with st.spinner("Processing... please wait"):
 
@@ -196,12 +193,12 @@ if run_clicked and shopify_file and razorpay_file:
         ws_lookup.freeze_panes = 'A2'
         wb_lookup.save(lookup_path)
 
-        # ── Build Journal rows — CR first, DR last ────────────────────────────────
+        # ── Journal rows ────────────────────────────────
         journal_rows = []
 
         for i, row in rp.iterrows():
             is_cr = row['credit'] > 0 and row['debit'] == 0
-            gross = row['credit'] if is_cr else row['debit']
+            gross = row['amount'] if pd.notna(row['amount']) else 0   # ✅ CHANGED HERE
 
             receipt_key = val_or_na(row['order_receipt'])
             me          = manual_edits.get(receipt_key, {})
@@ -221,9 +218,14 @@ if run_clicked and shopify_file and razorpay_file:
                 debit_acc  = email
                 credit_acc = 'Razorpay Payment Receivable'
 
+            try:
+                journal_date = pd.to_datetime(row['settled_at'], dayfirst=True).date()
+            except:
+                journal_date = None
+
             journal_rows.append({
                 'is_cr':      is_cr,
-                'order_date': selected_date,
+                'order_date': journal_date,
                 'credit_acc': credit_acc,
                 'debit_acc':  debit_acc,
                 'gross':      gross,
@@ -231,7 +233,6 @@ if run_clicked and shopify_file and razorpay_file:
                 'order_no':   order_no,
             })
 
-        # Sort: CR rows first, DR rows last
         journal_rows.sort(key=lambda x: (0 if x['is_cr'] else 1))
 
         # ── Journal Sheet ─────────────────────────────────────────────────────────
@@ -266,27 +267,25 @@ if run_clicked and shopify_file and razorpay_file:
                 cell.alignment = aln
                 cell.fill      = row_fill
 
-            ws_journal.cell(row=r_idx, column=1).number_format = 'DD-MM-YYYY'
+            ws_journal.cell(row=r_idx, column=1).number_format = 'DD/MM/YYYY'
 
-            # Debit Reference No (col 4) — store as number if possible
+            # Convert Order No to number
             ref_cell = ws_journal.cell(row=r_idx, column=4)
             try:
-                ref_cell.value         = int(float(str(entry['order_no']).strip()))
+                ref_cell.value = int(float(str(entry['order_no']).strip()))
                 ref_cell.number_format = '0'
-            except (ValueError, TypeError):
-                pass  # leave as-is if not numeric
+            except:
+                pass
 
         ws_journal.freeze_panes = 'A2'
         wb_journal.save(output_path)
 
-    # ── Store file bytes in session state ─────────────────────────────────
     with open(lookup_path,  "rb") as f: st.session_state.lookup_bytes  = f.read()
     with open(output_path,  "rb") as f: st.session_state.journal_bytes = f.read()
     st.session_state.lookup_filename  = lookup_filename.strip()  or 'lookup'
     st.session_state.journal_filename = journal_filename.strip() or 'journal_final'
     st.session_state.ready = True
 
-# ── Always show downloads if ready (persists across re-runs) ─────────
 if st.session_state.ready:
     st.success("✅ Processing completed! Download your files below.")
 
