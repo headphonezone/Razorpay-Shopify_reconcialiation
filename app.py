@@ -10,17 +10,19 @@ from openpyxl.utils import get_column_letter
 st.title("Excel Reconciliation Tool")
 
 # ── Session state init ─────────────────────────────────────────────
-if 'lookup_bytes'   not in st.session_state: st.session_state.lookup_bytes   = None
-if 'journal_bytes'  not in st.session_state: st.session_state.journal_bytes  = None
-if 'ready'          not in st.session_state: st.session_state.ready          = False
+if 'lookup_bytes'      not in st.session_state: st.session_state.lookup_bytes      = None
+if 'journal_bytes'     not in st.session_state: st.session_state.journal_bytes     = None
+if 'tax_journal_bytes' not in st.session_state: st.session_state.tax_journal_bytes = None
+if 'ready'             not in st.session_state: st.session_state.ready             = False
 
 shopify_file  = st.file_uploader("Upload Shopify Excel",  type=["xlsx"])
 razorpay_file = st.file_uploader("Upload Razorpay Excel", type=["xlsx"])
 
 # ── Custom file names ──────────────────────────────────────────────
 st.subheader("Output File Names")
-lookup_filename  = st.text_input("Lookup File Name",  value="lookup",        placeholder="e.g. lookup_april")
-journal_filename = st.text_input("Journal File Name", value="journal_final", placeholder="e.g. journal_april")
+lookup_filename      = st.text_input("Lookup File Name",      value="lookup",        placeholder="e.g. lookup_april")
+journal_filename     = st.text_input("Journal File Name",     value="journal_final", placeholder="e.g. journal_april")
+tax_journal_filename = st.text_input("Tax Journal File Name", value="tax_journal",   placeholder="e.g. tax_journal_april")
 
 # ── Run button ─────────────────────────────────────────────────────
 run_clicked = st.button("▶ Run Reconciliation", type="primary", disabled=not (shopify_file and razorpay_file))
@@ -34,11 +36,12 @@ if run_clicked and shopify_file and razorpay_file:
 
     with st.spinner("Processing... please wait"):
 
-        temp_dir      = tempfile.mkdtemp()
-        shopify_path  = os.path.join(temp_dir, "shopify.xlsx")
-        razorpay_path = os.path.join(temp_dir, "razorpay.xlsx")
-        lookup_path   = os.path.join(temp_dir, "lookup_26.xlsx")
-        output_path   = os.path.join(temp_dir, "journal_final_26.xlsx")
+        temp_dir         = tempfile.mkdtemp()
+        shopify_path     = os.path.join(temp_dir, "shopify.xlsx")
+        razorpay_path    = os.path.join(temp_dir, "razorpay.xlsx")
+        lookup_path      = os.path.join(temp_dir, "lookup_26.xlsx")
+        output_path      = os.path.join(temp_dir, "journal_final_26.xlsx")
+        tax_journal_path = os.path.join(temp_dir, "tax_journal.xlsx")
 
         with open(shopify_path, "wb") as f:
             f.write(shopify_file.getbuffer())
@@ -47,6 +50,9 @@ if run_clicked and shopify_file and razorpay_file:
 
         shopify = pd.read_excel(shopify_path)
         rp      = pd.read_excel(razorpay_path)
+
+        # ── Filter out On-Demand Settlements and Adjustments ──────────────────
+        rp = rp[~rp['transaction_entity'].isin(['settlement.ondemand', 'adjustment'])].reset_index(drop=True)
 
         shopify['Payment id'] = shopify['Payment id'].astype(str).str.strip()
         rp['order_receipt']   = rp['order_receipt'].astype(str).str.strip()
@@ -193,12 +199,12 @@ if run_clicked and shopify_file and razorpay_file:
         ws_lookup.freeze_panes = 'A2'
         wb_lookup.save(lookup_path)
 
-        # ── Journal rows ────────────────────────────────
+        # ── Journal rows ──────────────────────────────────────────────────────────
         journal_rows = []
 
         for i, row in rp.iterrows():
             is_cr = row['credit'] > 0 and row['debit'] == 0
-            gross = row['amount'] if pd.notna(row['amount']) else 0   # ✅ CHANGED HERE
+            gross = row['amount'] if pd.notna(row['amount']) else 0
 
             receipt_key = val_or_na(row['order_receipt'])
             me          = manual_edits.get(receipt_key, {})
@@ -269,7 +275,6 @@ if run_clicked and shopify_file and razorpay_file:
 
             ws_journal.cell(row=r_idx, column=1).number_format = 'DD/MM/YYYY'
 
-            # Convert Order No to number
             ref_cell = ws_journal.cell(row=r_idx, column=4)
             try:
                 ref_cell.value = int(float(str(entry['order_no']).strip()))
@@ -280,16 +285,66 @@ if run_clicked and shopify_file and razorpay_file:
         ws_journal.freeze_panes = 'A2'
         wb_journal.save(output_path)
 
-    with open(lookup_path,  "rb") as f: st.session_state.lookup_bytes  = f.read()
-    with open(output_path,  "rb") as f: st.session_state.journal_bytes = f.read()
-    st.session_state.lookup_filename  = lookup_filename.strip()  or 'lookup'
-    st.session_state.journal_filename = journal_filename.strip() or 'journal_final'
+        # ── Tax Journal Sheet ─────────────────────────────────────────────────────
+        total_fee = round(rp['fee (exclusive tax)'].sum(), 2)
+        total_tax = round(rp['tax'].sum(), 2)
+
+        wb_tax = Workbook()
+        ws_tax = wb_tax.active
+        ws_tax.title = 'Tax Journal'
+
+        tj_headers    = ['Order Date', 'Credit Account', 'Debit Account', 'Debit Reference No',
+                         'Gross Total (Rs)', 'Narration']
+        tj_col_widths = [16, 35, 35, 18, 22, 32]
+
+        write_headers(ws_tax, tj_headers, tj_col_widths, header_font, header_fill, center, border)
+        
+        total_fee_tax = round(total_fee + total_tax, 2)
+
+        tax_entries = [
+            {
+                'credit_acc': 'Razorpay Payment Receivable',
+                'debit_acc':  'Razorpay Commission Paid',
+                'amount':     total_fee_tax,
+            }
+        ]
+        
+
+        tax_row_fill = PatternFill('solid', start_color='FFF2CC')
+
+        for r_idx, entry in enumerate(tax_entries, start=2):
+            values = [
+                '',                  # Order Date       — blank
+                entry['credit_acc'],
+                entry['debit_acc'],
+                '',                  # Debit Ref No     — blank
+                entry['amount'],
+                '',                  # Narration        — blank
+            ]
+            aligns = [center, left, left, center, right, left]
+
+            for col, (val, aln) in enumerate(zip(values, aligns), 1):
+                cell           = ws_tax.cell(row=r_idx, column=col, value=val)
+                cell.border    = border
+                cell.alignment = aln
+                cell.fill      = tax_row_fill
+
+        ws_tax.freeze_panes = 'A2'
+        wb_tax.save(tax_journal_path)
+
+    with open(lookup_path,      "rb") as f: st.session_state.lookup_bytes      = f.read()
+    with open(output_path,      "rb") as f: st.session_state.journal_bytes     = f.read()
+    with open(tax_journal_path, "rb") as f: st.session_state.tax_journal_bytes = f.read()
+
+    st.session_state.lookup_filename      = lookup_filename.strip()      or 'lookup'
+    st.session_state.journal_filename     = journal_filename.strip()     or 'journal_final'
+    st.session_state.tax_journal_filename = tax_journal_filename.strip() or 'tax_journal'
     st.session_state.ready = True
 
 if st.session_state.ready:
     st.success("✅ Processing completed! Download your files below.")
 
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
 
     with col1:
         st.download_button(
@@ -307,4 +362,13 @@ if st.session_state.ready:
             file_name=f"{st.session_state.journal_filename}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             key="dl_journal"
+        )
+
+    with col3:
+        st.download_button(
+            label="⬇ Download Tax Journal File",
+            data=st.session_state.tax_journal_bytes,
+            file_name=f"{st.session_state.tax_journal_filename}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="dl_tax_journal"
         )
