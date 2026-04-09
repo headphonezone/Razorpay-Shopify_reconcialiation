@@ -286,8 +286,11 @@ if run_clicked and shopify_file and razorpay_file:
         wb_journal.save(output_path)
 
         # ── Tax Journal Sheet ─────────────────────────────────────────────────────
-        total_fee = round(rp['fee (exclusive tax)'].sum(), 2)
-        total_tax = round(rp['tax'].sum(), 2)
+        # ── Tax Journal Sheet ─────────────────────────────────────────────────────
+        rp_all    = pd.read_excel(razorpay_path)
+        total_fee = round(rp_all['fee (exclusive tax)'].sum(), 2)
+        total_tax = round(rp_all['tax'].sum(), 2)
+        
 
         wb_tax = Workbook()
         ws_tax = wb_tax.active
