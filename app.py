@@ -71,7 +71,7 @@ st.sidebar.caption("Current Session: Active")
 if page == "Razorpay Portal":
     st.markdown("<h1>🛡️ Razorpay x Shopify </h1>", unsafe_allow_html=True)
     try:
-        with open("app.py", encoding="utf-8") as f:
+        with open("Razorpay.py", encoding="utf-8") as f:
             code = f.read()
             exec(code)
     except FileNotFoundError:
@@ -80,7 +80,7 @@ if page == "Razorpay Portal":
 elif page == "Cashfree Portal":
     st.markdown("<h1>📊 Cashfree x Shopify</h1>", unsafe_allow_html=True)
     try:
-        with open("cashfree.py", encoding="utf-8") as f:
+        with open("CashFree.py", encoding="utf-8") as f:
             code = f.read()
             exec(code)
     except FileNotFoundError:
