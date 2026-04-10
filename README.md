@@ -1,119 +1,60 @@
-# 📊 Excel Reconciliation Tool
+🛡️ FinRecon Gateway: Razorpay & Cashfree Reconciliation
+FinRecon Gateway is a specialized Streamlit-based financial tool designed to bridge the gap between payment gateway settlements (Razorpay/Cashfree) and Shopify order exports. It automates the tedious task of matching transaction emails to order numbers and generates ready-to-use accounting journals.
 
-A web-based tool built with **Streamlit** that automates the reconciliation between **Shopify** and **Razorpay** transaction data and generates formatted **Journal Entries** and **Lookup Reports** as Excel files.
+🚀 Features
+Dual Gateway Support: Switch seamlessly between Razorpay and Cashfree processing portals.
 
----
+Smart Header Detection: Automatically identifies relevant columns (Email, Amount, Date) even if the uploaded Excel file has summary rows or metadata at the top.
 
-## 🚀 Live App
+Automated Journal Entry: Generates formatted .xlsx files with:
 
-👉 [Click here to open the app](https://your-app-link.streamlit.app)
-> *(Replace this link after deploying on Streamlit Cloud)*
+Credit/Debit Logic: Properly categorized "Payments" vs "Refunds."
 
----
+Settlement Dates: Captured directly from the gateway reports for accurate accrual accounting.
 
-## 📋 Features
+Reference ID Matching: Includes Merchant Reference IDs for easy auditing.
 
-- Upload Shopify and Razorpay Excel files
-- Automatically matches transactions using Payment ID
-- Generates a **Lookup Sheet** with:
-  - Customer Name, Order No, Payment ID
-  - Amount, Fee, Tax, Gross Total
-  - DR/CR classification
-  - Amount verification (Matched / Mismatch)
-- Generates a **Journal Entry Sheet** with:
-  - Credit and Debit accounts
-  - Order date, narration, gross total
-  - CR rows (green) and DR rows (red) color-coded
-- Supports **manual edits** via a lookup file
-- Download both output files directly from the app
+Persistence: Results and download buttons remain visible even after interaction, ensuring a smooth workflow.
 
----
+🛠️ How it Works
+The reconciliation process follows a "Fuzzy Match" logic based on customer identifiers:
 
-## 🗂️ Project Structure
+Data Ingestion: The user uploads a Gateway Settlement Report and a Shopify Order Export.
 
-```
-reconciliation-tool/
-│
-├── app.py               # Main Streamlit application
-├── requirements.txt     # Python dependencies
-└── README.md            # Project documentation
-```
+Cleaning: The tool strips whitespace, normalizes email addresses to lowercase, and filters out non-transactional events.
 
----
+The Merge: It performs a "Left Join" using the Email Address as the primary key. This allows the tool to pull the Shopify Order Number into the Gateway transaction list.
 
-## ⚙️ Requirements
+Journal Generation: * Payments: Debits Cashfree/Razorpay Receivable and Credits the Customer Email.
 
-```
-streamlit
-pandas
-openpyxl
-```
+Refunds: Debits the Customer Email and Credits Cashfree/Razorpay Receivable.
 
----
+📂 Project Structure
+Plaintext
+├── main_dashboard.py      # The entry point with Sidebar Navigation
+├── app.py                 # Logic for Razorpay x Shopify reconciliation
+└── cashfree.py            # Logic for Cashfree x Shopify reconciliation
+📖 Usage Instructions
+Launch the Dashboard: Run streamlit run main_dashboard.py.
 
-## 🖥️ How to Run Locally
+Select Portal: Use the sidebar to choose between Razorpay or Cashfree.
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/your-username/reconciliation-tool.git
-   cd reconciliation-tool
-   ```
+Upload Files:
 
-2. **Install dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
+Settlement Report: The Excel file downloaded from your payment gateway dashboard.
 
-3. **Run the app**
-   ```bash
-   streamlit run app.py
-   ```
+Shopify Export: The "Orders" export (XLSX) from your Shopify admin.
 
-4. Open `http://localhost:8501` in your browser
+Set Filename: Enter your desired name in the Output Journal File Name field.
 
----
+Run & Download: Click Run Reconciliation. Once the metrics appear, verify the "Unmatched" count and click Download Journal.
 
-## 📤 How to Use
+📋 Requirements
+To run this tool locally, ensure you have the following Python libraries installed:
 
-1. Upload your **Shopify Excel** file
-2. Upload your **Razorpay Excel** file
-3. Select the **Journal Entry Date**
-4. Click process — two files will be ready to download:
-   - `lookup.xlsx` — Reconciliation lookup report
-   - `journal_final.xlsx` — Journal entry sheet
+Bash
+pip install streamlit pandas openpyxl
+⚠️ Important Notes
+Email Matching: The tool relies on the customer email address matching between the gateway and Shopify. If a customer used a different email at checkout than they did for the payment, the "Order Number" will appear as N/A.
 
----
-
-## 📌 Input File Requirements
-
-### Shopify Excel
-Must contain these columns:
-- `Payment id`
-- `Email`
-- `Order Number`
-
-### Razorpay Excel
-Must contain these columns:
-- `order_receipt`
-- `payment_notes`
-- `amount`
-- `fee (exclusive tax)`
-- `tax`
-- `credit`
-- `debit`
-- `entity_created_at`
-
----
-
-## 🛠️ Built With
-
-- [Streamlit](https://streamlit.io/) — Web UI framework
-- [Pandas](https://pandas.pydata.org/) — Data processing
-- [OpenPyXL](https://openpyxl.readthedocs.io/) — Excel file generation
-
----
-
-## 👤 Author
-
-**Vijay**
-> For any issues or suggestions, feel free to raise an Issue in this repository.
+File Format: Ensure both files are in .xlsx format. Standard CSVs should be saved as Excel Workbooks before uploading for the best experience.
