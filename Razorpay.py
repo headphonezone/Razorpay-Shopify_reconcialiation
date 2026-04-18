@@ -138,7 +138,7 @@ if rp_file and sh_file:
                     journal_rows.append([
                         s_date, 
                         email if is_cr else 'Razorpay Payment Receivable', 
-                        'Razorpay Receivable' if is_cr else email, 
+                        'Razorpay Payment Receivable' if is_cr else email, 
                         order_no, row['amount'], receipt
                     ])
                     
